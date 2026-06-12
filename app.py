@@ -77,27 +77,26 @@ age = st.sidebar.slider("Âge du patient :", 18, 90, 48)
 stade = st.sidebar.selectbox("Stade de la Tumeur (Classification Extension) :", ["Stade I", "Stade II", "Stade III", "Stade IV (Métastatique)"])
 taille_t = st.sidebar.selectbox("Taille de la tumeur (Classification T) :", ["T0", "T1", "T2", "T3", "T4"])
 
-st.sidebar.header("🍏 3. Microenvironnement & Mode de vie")
+st.sidebar.header("⏳ 3. Chronologie & Radiothérapie")
+# Nouveaux paramètres demandés
+timing = st.sidebar.radio("Timing du protocole thérapeutique :", ["Néoadjuvant (Avant Chirurgie)", "Adjuvant (Après Chirurgie)"])
+radiotherapie_oui_non = st.sidebar.radio("Radiothérapie associée :", ["Oui", "Non"])
+nb_seances_radio = st.sidebar.slider("Nombre de séances de radiothérapie validées :", 5, 35, 25) if radiotherapie_oui_non == "Oui" else 0
+
+st.sidebar.header("🍏 4. Microenvironnement & Mode de vie")
 regime = st.sidebar.selectbox("Régime Alimentaire / Profil Métabolique :", ["Équilibré (Faible index glycémique)", "Occidental (Riche en sucres et acides gras)", "Cétogène strict"])
 stress = st.sidebar.slider("Niveau de Stress Psychologique / Cortisol (0 à 10) :", 0, 10, 6)
 environnement = st.sidebar.selectbox("Perturbateurs Endocriniens / Pollution :", ["Exposition Faible", "Exposition Élevée"])
 
-st.sidebar.header("💊 4. Sélection de la Thérapeutique Autorisée")
+st.sidebar.header("💊 5. Sélection de la Thérapeutique Autorisée")
 traitement_choisi = st.sidebar.selectbox("Choisir le traitement à injecter dans le Jumeau :", traitements_filtres)
 
-st.sidebar.header("🧬 5. Données Biophysiques")
-score_hdock = st.sidebar.number_input("Score HDOCK ou Score d'Affinité Moléculaire :", value=-263.0, step=1.0)
 
-
-# --- MOTEUR BIOPHYSIQUE ET CLINIQUE DU JUMEAU (ALGORITHME NETTOYÉ) ---
+# --- MOTEUR CLINIQUES ET SYNAPTIQUES DU JUMEAU (ALGORITHME MODIFIÉ) ---
 info_t = TRAITEMENTS_DB[traitement_choisi]
 efficacite_calculée = info_t["efficacite_base"]
 
-# Algorithme d'affinité HDOCK
-bonus_structural = (abs(score_hdock) - 200) * 0.15
-efficacite_calculée += bonus_structural
-
-# Algorithme métabolique
+# 1. Algorithme métabolique
 if regime == "Occidental (Riche en sucres et acides gras)":
     impact_sucre = info_t["sensibilite_sucre"]
 elif regime == "Cétogène strict":
@@ -105,10 +104,10 @@ elif regime == "Cétogène strict":
 else:
     impact_sucre = 0.0
 
-# Algorithme Cortisol
+# 2. Algorithme Cortisol
 impact_stress = (stress / 10.0) * info_t["sensibilite_stress"]
 
-# Algorithme d'extension anatomique
+# 3. Algorithme d'extension anatomique
 if stade == "Stade IV (Métastatique)":
     impact_stade = -15.0
 elif stade == "Stade III":
@@ -116,7 +115,7 @@ elif stade == "Stade III":
 else:
     impact_stade = 0.0
 
-# Algorithme de taille tumorale T0-T4
+# 4. Algorithme de taille tumorale T0-T4
 if "T4" in taille_t:
     impact_taille = -12.0
 elif "T3" in taille_t:
@@ -126,41 +125,57 @@ elif "T2" in taille_t:
 else:
     impact_taille = 0.0
 
-# Calcul final sans la variable impact_mutation
-score_final_reponse = max(5, min(98, efficacite_calculée + impact_sucre + impact_stress + impact_stade + impact_taille))
+# 5. Algorithme d'ajustement de la Radiothérapie & Chronologie
+if radiotherapie_oui_non == "Oui":
+    # Synergie positive sur le contrôle local/systémique selon la complétude des séances
+    impact_radio = 5.0 if nb_seances_radio >= 20 else 2.0
+else:
+    # Pénalisation potentielle de récurrence locale si absente dans les stades avancés
+    impact_radio = -6.0 if stade in ["Stade II", "Stade III"] else -2.0
+
+# Modulation de base induite par la chronologie de l'administration (Néoadjuvant vs Adjuvant)
+impact_timing = 3.0 if timing == "Néoadjuvant (Avant Chirurgie)" else 0.0
+
+# Calcul du score final réorganisé
+score_final_reponse = max(5, min(98, efficacite_calculée + impact_sucre + impact_stress + impact_stade + impact_taille + impact_radio + impact_timing))
 
 
 # --- AFFICHAGE DE L'INTERFACE ET RAPPORT SCIENTIFIQUE ---
 st.header(f"📋 Rapport Prédictif du Jumeau Numérique : Traitement par {traitement_choisi}")
-st.write(f"**Phénotype Immunohistochimique :** RE [{recepteur_estrogene}] | RP [{recepteur_progesterone}] | HER2 [{statut_her2}]")
+st.write(f"**Profil Clinique :** Protocole {timing} | Phénotype : RE [{recepteur_estrogene}] | RP [{recepteur_progesterone}] | HER2 [{statut_her2}]")
 st.caption(f"**Description du mécanisme d'action :** {info_t['description']}")
 
 col1, col2 = st.columns([1, 2])
 
 with col1:
     st.markdown("### 🎯 Score de Réponse")
-    st.metric(label="Efficacité Globale Estimée", value=f"{score_final_reponse:.1f} %")
+    # Adaptation sémantique de l'indicateur selon le choix temporel
+    label_reponse = "Taux de Réponse Pathologique Complète Prédit (pCR)" if timing == "Néoadjuvant (Avant Chirurgie)" else "Bénéfice Absolu Net Estimé (Gain DFS à 5 ans)"
+    
+    st.metric(label=label_reponse, value=f"{score_final_reponse:.1f} %")
     st.progress(score_final_reponse / 100)
     
     if score_final_reponse >= 70:
-        st.success("🟢 HAUTEMENT RÉPONDEUR : Le profil systémique et moléculaire est optimal pour cette thérapie.")
+        st.success("🟢 HAUTEMENT RÉPONDEUR : Le profil systémique et moléculaire est optimal pour cette stratégie.")
     elif score_final_reponse >= 40:
-        st.warning("🟡 RÉPONDEUR MODÉRÉ : Résistance partielle détectée. Nécessité d'agir sur les facteurs environnementaux.")
+        st.warning("🟡 RÉPONDEUR MODÉRÉ : Résistance partielle détectée. Nécessité d'agir sur les facteurs microenvironnementaux.")
     else:
-        st.error("🔴 NON RÉPONDEUR / RÉSISTANCE : Risque d'échec thérapeutique élevé dû aux blocages métaboliques.")
+        st.error("🔴 NON RÉPONDEUR / RÉSISTANCE : Risque d'échec thérapeutique élevé dû aux blocages systémiques.")
 
 with col2:
     st.markdown("### 📊 Décomposition des Pressions de Résistance (Données Cliniques)")
     
     df_poids = pd.DataFrame({
         'Paramètres Systémiques': [
-            'Affinité Moléculaire Initiale', 
+            'Efficacité Théorique Initiale', 
             'Impact Glycémique (Alimentation)', 
             'Impact Cortisol (Stress)', 
             'Avancement Tumoral (Stade)', 
-            f'Critère Dimensionnel ({taille_t})'
+            f'Critère Dimensionnel ({taille_t})',
+            f'Contrôle Local (Radiothérapie : {radiotherapie_oui_non})',
+            'Facteur Chronologique (Timing)'
         ],
-        'Modulation Énergétique (%)': [efficacite_calculée, impact_sucre, impact_stress, impact_stade, impact_taille]
+        'Modulation Énergétique (%)': [efficacite_calculée, impact_sucre, impact_stress, impact_stade, impact_taille, impact_radio, impact_timing]
     })
     fig = px.bar(df_poids, x='Modulation Énergétique (%)', y='Paramètres Systémiques', orientation='h',
                  color='Modulation Énergétique (%)', color_continuous_scale='RdYlGn')
@@ -170,8 +185,8 @@ st.markdown("---")
 st.markdown("### 🔬 Corrélation Biologique & Synthèse Littéraire (Format PubMed)")
 
 st.info(f"""
-* **Mécanisme et Cible Principale :** Le traitement sélectionné (*{traitement_choisi}*) cible préférentiellement la voie de signalisation : **{info_t['cible']}**.
-* **Statut Moléculaire :** Le score d'amarrage structural entré ({score_hdock} kcal/mol) module l'affinité cinétique initiale au sein du modèle.
-* **Analyse de Résistance Métabolique (PubMed Fact) :** L'évaluation montre qu'avec un profil métabolique de type *{regime}* et un score de stress de *{stress}/10*, le patient génère des barrières biochimiques. Par exemple, le stress influence négativement ce traitement à hauteur de {impact_stress:.1f}%, en accord avec les données de résistance cellulaire observées *in vitro*. Le critère dimensionnel clinique ({taille_t}) applique une contrainte d'extension mesurée à {impact_taille:.1f}%.
-* **Orientation pour le LGMIB :** En modifiant le profil d'expression des récepteurs (RE/RP/HER2) dans le menu de gauche, l'interface met à jour instantanément la liste des thérapeutiques conventionnelles validées pour simuler leur efficacité globale face aux contraintes de l'hôte.
+* **Mécanisme et Cible Principale :** Le traitement sélectionné (*{traitement_choisi}*) opère préférentiellement sur la voie : **{info_t['cible']}**.
+* **Analyse de la Stratégie Thérapeutique :** L'approche configurée en mode **{timing}** intègre une dynamique d'évaluation macro-tumorale. L'association de la radiothérapie (**{radiotherapie_oui_non}** avec {nb_seances_radio} séances) module le coefficient de contrôle local régional à hauteur de {impact_radio:.1f}%.
+* **Analyse de Résistance Métabolique & Neuro-endocrine :** L'évaluation montre qu'avec un profil métabolique de type *{regime}* et un score de stress de *{stress}/10*, le patient génère des barrières biochimiques affectant la cinétique thérapeutique. Le critère dimensionnel clinique ({taille_t}) applique une charge d'extension mesurée à {impact_taille:.1f}%.
+* **Orientation pour le LGMIB :** Ce jumeau numérique permet de moduler dynamiquement l'ordre d'administration (Néoadjuvant vs Adjuvant) et l'impact de l'irradiation locale afin de comparer l'efficacité des protocoles standardisés vis-à-vis des barrières physiologiques de l'hôte.
 """)
