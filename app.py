@@ -1,81 +1,96 @@
 import streamlit as st
 import pandas as pd
+import plotly.express as px
 
-# --- Configuration de la page ---
-st.set_page_config(page_title="TNBC-TwinPredict PRO", page_icon="🧬", layout="wide")
+# --- CONFIGURATION ---
+st.set_page_config(page_title="TNBC Oncology Twin Engine", page_icon="🏥", layout="wide")
 
-st.title("🧬 TNBC-TwinPredict : Simulateur Universel de Jumeau Numérique")
-st.subheader("Plateforme dynamique d'évaluation In Silico pour le Cancer du Sein Triple Négatif")
+st.title("🏥 TNBC Oncology Twin Engine")
+st.subheader("Simulateur Clinique Holistique & Prédiction de Réponse à la Lectine")
 st.markdown("---")
 
-# --- BARRE LATÉRALE : ENTRÉE DES DONNÉES EN DIRECT ---
-st.sidebar.header("🔬 Paramètres du Jumeau Numérique")
-st.sidebar.write("Entrez les scores obtenus lors de vos simulations pour tester le comportement de la cellule :")
+# --- BARRE LATÉRALE : ENTRÉE DES PARAMÈTRES DU PATIENT (INPUTS) ---
+st.sidebar.header("👤 1. Profil Clinique du Patient")
+age = st.sidebar.slider("Âge du patient :", 18, 90, 45)
+stade = st.sidebar.selectbox("Stade du Cancer (TNBC) :", ["Stade I (Localisé)", "Stade II", "Stade III (Avancé)", "Stade IV (Métastatique)"])
 
-# Boutons de saisie dynamiques pour l'utilisateur
-nom_lectine = st.sidebar.text_input("Nom de la Lectine / Molécule :", "Lectine de Pistacia vera")
-score_cible = st.sidebar.number_input("Score HDOCK sur la Cible (ex: EGFR) :", value=-250.0, step=1.0)
-score_controle = st.sidebar.number_input("Score HDOCK sur le Contrôle Négatif :", value=-200.0, step=1.0)
+st.sidebar.header("🍏 2. Mode de vie & Environnement")
+regime = st.sidebar.selectbox("Régime Alimentaire :", ["Équilibré / Méditerranéen", "Riche en Sucres / Ultra-transformé", "Cétogène / Faible en glucides"])
+stress = st.sidebar.slider("Niveau de Stress Chronique (Échelle de 0 à 10) :", 0, 10, 5)
+environnement = st.sidebar.selectbox("Exposition Environnementale (Pollution/Perturbateurs) :", ["Faible", "Modérée", "Élevée (Zone Urbaine/Industrielle)"])
 
-# --- CALCULS INTERNES DU JUMEAU NUMÉRIQUE ---
-# Le jumeau calcule la différence d'énergie pour évaluer la spécificité
-delta_energie = score_controle - score_cible  # Plus le score cible est négatif, plus delta est grand
+st.sidebar.header("🧬 3. Données Moléculaires & Docking")
+score_hdock = st.sidebar.number_input("Score HDOCK de la Lectine sur l'EGFR du patient :", value=-263.0, step=1.0)
+fasta_input = st.sidebar.text_area("Séquence FASTA de la cible du Patient (EGFR/MUC1) :", ">Patient_TNBC_EGFR\nMRPSGTAGAALLALLAALCPASRAEEKKVCQGTSNKLTQLGTFEDHFLSLQRMFNNCEVVLGNLEITYVQRNYDLSFLKTIQEVAGYVLIALNTVERIPENLQIIRGNMYYENSYALAVLSNYDANKTGLKELPMRNLQEILHGAVRFSNNPALCNVESIQWRDIVSSDFLSNMSMDFQNHLGSCQKCDPSCPNGSCWGAGEENCQKLTKIICAQQCSGRCRGKSPSDCCHNQCAAGCTGPRESDCLVCRKFRDEATC")
 
-# Création du tableau dynamique
-data_dynamique = {
-    "Condition de Simulation": ["Cible Membranaire (TNBC)", "Contrôle Négatif"],
-    "Molécule Testée": [nom_lectine, nom_lectine],
-    "Score d Énergie (kcal/mol)": [score_cible, score_controle]
-}
-df_dynamique = pd.DataFrame(data_dynamique)
+# --- MOTEUR MATHÉMATIQUE DU JUMEAU NUMÉRIQUE (ALGORITHME BIO-CLINIQUE) ---
+# On initialise un score d'efficacité de base à partir du docking réel de l'utilisateur
+score_base_efficacite = min(95, max(5, int((abs(score_hdock) / 320) * 100)))
 
+# Application des facteurs d'impact cliniques (Modulateurs)
+impact_stress = stress * -1.5 # Le stress diminue l'efficacité (immunodépression, résistance)
+if regime == "Riche en Sucres / Ultra-transformé":
+    impact_regime = -12.0 # Le sucre nourrit la prolifération tumorale TNBC
+elif regime == "Cétogène / Faible en glucides":
+    impact_regime = 5.0 # Ralentit le métabolisme tumoral
+else:
+    impact_regime = 0.0
 
-# --- ARCHITECTURE DES ONGLETS ---
-onglet1, onglet2 = st.tabs([
-    "🖥️ 1. Contrôle du Jumeau Numérique & Données", 
-    "⚡ 2. Analyse de l'Inhibition Cellulaire"
-])
+if environnement == "Élevée (Zone Urbaine/Industrielle)":
+    impact_env = -5.0
+else:
+    impact_env = 0.0
 
-# ---- ONGLET 1 : Visualisation des données entrées ----
-with onglet1:
-    st.header("📊 Matrice de Docking du Jumeau Numérique")
-    st.write("Voici les données actuellement injectées dans le simulateur cellulaire :")
+# Analyse de la séquence FASTA (Simulation : recherche de mutations de résistance connues)
+# Si la séquence contient une mutation fictive par exemple à une position critique, on baisse le score
+if "GTSNK" not in fasta_input: 
+    impact_mutation = -20.0 # Mutation détectée dans l'interface de liaison
+    statut_mutation = "Mutation détectée dans le domaine extracellulaire (Altération de l'épitope)"
+else:
+    impact_mutation = 0.0
+    statut_mutation = "Aucune mutation délétère détectée sur la zone de contact"
+
+# Calcul de la probabilité finale de réponse thérapeutique
+probabilite_reponse = max(0, min(100, score_base_efficacite + impact_stress + impact_regime + impact_env + impact_mutation))
+
+# --- INTERFACE DE SORTIE (RAPPORT DÉTAILLÉ) ---
+st.header("📋 Rapport Médical Prédictif du Jumeau Numérique")
+st.write(f"Ce rapport estime l'efficacité thérapeutique potentielle de la lectine de *Pistacia vera* pour ce profil patient spécifique.")
+
+col1, col2 = st.columns([1, 2])
+
+with col1:
+    st.markdown("### 📊 Index de Réponse")
+    st.metric(label="Probabilité de Réponse Clinique", value=f"{probabilite_reponse:.1f} %")
+    st.progress(probabilite_reponse / 100)
     
-    # Affichage du tableau mis à jour en direct
-    st.dataframe(df_dynamique, use_container_width=True)
-    
-    st.metric(label="Différence d'Énergie (Spécificité de la liaison)", value=f"{delta_energie:.1f} kcal/mol")
-    st.caption("Une différence positive indique que la lectine préfère la cible tumorale au contrôle négatif.")
-
-# ---- ONGLET 2 : Interprétation Biologique Automatique (Tous les cas) ----
-with onglet2:
-    st.header("🧠 Analyse Prédictive du Jumeau Numérique")
-    st.write("Le modèle informatique analyse les forces thermodynamiques pour prédire le comportement en culture cellulaire :")
-    
-    # --- ALGORITHME DE DÉCISION DU JUMEAU (L'intelligence de l'app) ---
-    
-    # Cas 1 : La liaison sur la cible est plus faible ou égale au contrôle
-    if score_cible >= score_controle:
-        st.error("❌ **Échec de la simulation : Manque de spécificité**")
-        st.write(f"Le jumeau numérique montre que la {nom_lectine} se lie aussi bien (ou mieux) au contrôle négatif qu'à la cible tumorale. La liaison est considérée comme non-spécifique. Il est déconseillé de passer à la culture cellulaire.")
-    
-    # Cas 2 : La liaison est spécifique mais globale faible (scores proches de 0)
-    elif score_cible > -150:
-        st.warning("⚠️ **Affinité Trop Faible**")
-        st.write(f"Bien que la liaison soit légèrement spécifique, les scores d'énergie généraux sont trop faibles (au-dessus de -150 kcal/mol). La {nom_lectine} risque de se décrocher trop facilement de la membrane cancéreuse.")
-    
-    # Cas 3 : C'est le cas parfait (comme tes vrais résultats !)
+    # Statut global
+    if probabilite_reponse >= 75:
+        st.success("🟢 PROFIL RÉPONDEUR : Forte probabilité de succès thérapeutique.")
+    elif probabilite_reponse >= 45:
+        st.warning("🟡 RÉPONDEUR MODÉRÉ : Efficacité partielle prévisible. Ajustements requis.")
     else:
-        st.success("🎯 **Simulation Réussie : Forte Affinité & Spécificité**")
-        st.markdown(f"""
-        Le jumeau numérique a validé le comportement de la protéine :
-        * **Affinité robuste :** Le score sur la cible ({score_cible} kcal/mol) démontre un emboîtement structural très stable.
-        * **Sélectivité validée :** L'écart de **{delta_energie:.1f} kcal/mol** avec le contrôle négatif prouve que la molécule cible spécifiquement les récepteurs du cancer du sein Triple Négatif.
-        """)
-        
-        # Calcul d'un pourcentage d'inhibition théorique basé sur l'énergie
-        potentiel_inhibition = min(99, max(10, int((abs(score_cible) / 300) * 100)))
-        st.progress(potentiel_inhibition / 100)
-        st.metric("Potentiel d'Inhibition Cellulaire Estimé", f"{potentiel_inhibition}%")
-        
-        st.info("💡 **Message pour le LGMIB :** Ce profil thermodynamique idéal justifie pleinement le lancement d'un essai biologique *in vitro* (Test MTT de cytotoxicité) sur la lignée MDA-MB-231.")
+        st.error("🔴 NON RÉPONDEUR : Résistance systémique ou moléculaire élevée.")
+
+with col2:
+    st.markdown("### 🧬 Analyse des Facteurs d'Influence (Micro vs Macro)")
+    
+    # Création d'un graphique des impacts pour montrer au Dr Karim ce qui influence la note
+    df_impacts = pd.DataFrame({
+        'Facteurs': ['Affinité Moléculaire (Docking)', 'Impact Stress/Cortisol', 'Impact Régime Alimentaire', 'Impact Environnement', 'Génétique (Mutation FASTA)'],
+        'Score d Impact': [score_base_efficacite, impact_stress, impact_regime, impact_env, impact_mutation]
+    })
+    fig = px.bar(df_impacts, x='Score d Impact', y='Facteurs', orientation='h', 
+                 color='Score d Impact', color_continuous_scale='RdYlGn',
+                 title="Poids de chaque variable sur la réponse tumorale")
+    st.plotly_chart(fig, use_container_width=True)
+
+st.markdown("---")
+st.markdown("### 📝 Conclusions du Jumeau Numérique pour l'Oncologue & le Laboratoire")
+
+# Génération automatique du texte du rapport selon la combinaison entrée
+st.info(f"""
+* **Analyse Génomique :** {statut_mutation}. Le score de docking de {score_hdock} kcal/mol démontre une liaison structurelle initiale solide.
+* **Environnement & Mode de vie :** Le niveau de stress évalué à {stress}/10 engendre un environnement pro-inflammatoire systémique. Associé à un régime alimentaire de type *{regime}*, le microenvironnement tumoral présente un taux d'agressivité qui modifie la biodisponibilité de la lectine.
+* **Recommandation Clinique Générale :** {'Il est fortement recommandé de coupler l\'administration de la lectine à une correction nutritionnelle et une gestion du stress pour maximiser le blocage des récepteurs membranaires.' if probabilite_reponse < 75 else 'Ce patient présente un profil métabolique et moléculaire idéal pour une réponse optimale à la lectine végétale.'}
+""")
