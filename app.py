@@ -113,58 +113,48 @@ traitement_choisi = st.sidebar.selectbox("Molécule à simuler :", traitements_f
 
 
 # ==============================================================================
-# 🧮 VRAI MOTEUR BIOSTATISTIQUE : FONCTION SIGMOÏDE (LOGISTIC REGRESSION MODEL)
+# 🧮 MOTEUR BIOSTATISTIQUE : FONCTION SIGMOÏDE (LOGISTIC REGRESSION MODEL)
 # ==============================================================================
 info_t = TRAITEMENTS_BREAST_DB[traitement_choisi]
 
 # Choix du taux cible brut selon le protocole (pCR ou bénéfice DFS)
 rate_ref = info_t["pcr_reference"] if timing == "Néoadjuvant (Avant Chirurgie)" else info_t["benefit_dfs_5ans"]
 
-# Étape 1 : Conversion du taux d'essai clinique brut en "Log-Odds" (Logit d'origine)
-# Formule : logit(p) = ln(p / (1 - p))
+# Conversion du taux d'essai clinique brut en "Log-Odds" (Logit d'origine)
 p_ref = rate_ref / 100.0
-# Sécurité mathématique pour éviter la division par zéro
 p_ref = max(0.01, min(0.99, p_ref))
 logit_base = np.log(p_ref / (1.0 - p_ref))
 
-# Étape 2 : Application des coefficients de régression (Poids bêta réels)
-# Impact Métabolique
+# Application des coefficients de régression (Poids bêta)
 if regime == "Occidental (Riche en sucres / Inflammatoire)": 
     w_sucre = info_t["sensibilite_sucre"]
 elif regime == "Restriction Glucidique (Cétogène/Jeûne)": 
-    w_sucre = 0.2  # Gain d'exposition cellulaire par synergie insulinique
+    w_sucre = 0.2  
 else: 
     w_sucre = 0.0
 
-# Impact Stress (Axe cortisol)
 w_stress = (stress / 10.0) * info_t["sensibilite_stress"]
-
-# Impact Stade (Masse tumorale globale)
 w_stade = -0.45 if stade == "Stade IV" else (-0.15 if stade == "Stade III" else 0.0)
 
-# Impact Taille T (Résistance physique / Hypoxie)
 if "T4" in taille_t: w_taille = -0.4
 elif "T3" in taille_t: w_taille = -0.25
 elif "T2" in taille_t: w_taille = -0.1
-else: w_taille = 0.0 # T0/T1 pris comme référence de l'essai
+else: w_taille = 0.0 
 
-# Impact Observance (Dose-Intensité)
 if nb_seances_chimio >= 12:
     w_dose = min(0.25, (nb_seances_chimio - 12) * 0.03)
 else:
-    w_dose = (nb_seances_chimio - 12) * 0.15  # Perte d'efficacité logistique si sous-dosage
+    w_dose = (nb_seances_chimio - 12) * 0.15  
 
-# Impact Radiothérapie
 if radiotherapie_oui_non == "Oui":
     w_radio = 0.15 if nb_seances_radio >= 20 else 0.05
 else:
     w_radio = -0.25 if stade in ["Stade II", "Stade III"] else -0.05
 
-# Étape 3 : Somme des log-odds (Équation de score de régression)
+# Somme des log-odds (Équation de score de régression)
 logit_final = logit_base + w_sucre + w_stress + w_stade + w_taille + w_dose + w_radio
 
-# Étape 4 : Transformation inverse pour retrouver la probabilité exacte (0 à 100%)
-# Formule Sigmoïde : p = 1 / (1 + exp(-logit))
+# Transformation inverse (Formule Sigmoïde)
 score_final = (1.0 / (1.0 + np.exp(-logit_final))) * 100.0
 
 
@@ -174,13 +164,11 @@ score_final = (1.0 / (1.0 + np.exp(-logit_final))) * 100.0
 if timing == "Néoadjuvant (Avant Chirurgie)":
     label_metric = "Taux de Réponse Pathologique Complète Estimé (pCR)"
     desc_metric = "Calculé par transformation sigmoïde multi-factorielle à partir de l'essai pivot."
-    # La DFS à 5 ans dépend logistiquement de la pCR obtenue (Modèle de survie de Cox simplifié)
     dfs_base_tnbc = 0.85 if score_final > 50 else 0.60
     dfs_5ans = min(99.0, (dfs_base_tnbc + (score_final / 500.0)) * 100.0)
 else:
     label_metric = "Bénéfice Absolu Net à 5 ans (Gain de DFS)"
     desc_metric = "Pourcentage net de survie sans maladie ajouté par la molécule par rapport à une chirurgie seule."
-    # Survie globale = Taux standard chirurgie seule + le bénéfice logistique calculé
     survie_chirurgie_seule = 65.0 if stade in ["Stade I", "Stade II"] else 45.0
     dfs_5ans = min(99.0, survie_chirurgie_seule + score_final)
 
@@ -188,8 +176,10 @@ else:
 # ==============================================================================
 # RENDU DU RAPPORT MÉDICAL INTERACTIF
 # ==============================================================================
-st.header(f"📋 Fiche Clinique Validée : Protocole {traitement_choisi}")
-st.caption(f"**Méthodologie :** Régression Logistique calibrée sur {info_t['source']}")
+st.header(f"📋 Fiche Clinique Validée : Profil {sous_type_deduit}")
+st.write(f"**Phénotype :** RE [{recepteur_estrogene}] | RP [{recepteur_progesterone}] | HER2 [{statut_her2}]")
+st.write(f"**Protocole appliqué :** {traitement_choisi} ({info_t['classe']})")
+st.caption(f"**Publication source de calibration :** {info_t['source']}")
 
 col1, col2 = st.columns([1, 2])
 
@@ -207,7 +197,6 @@ with col1:
 with col2:
     st.subheader("📊 Poids des Variables Biostatistiques (Coefficients β)")
     
-    # Représentation des vrais poids de régression utilisés par l'algorithme
     df_impact = pd.DataFrame({
         'Poids Cliniques Évalués': [
             'Logit d\'Origine de l\'Essai Clinique', 
@@ -225,10 +214,15 @@ with col2:
                  color='Valeur Logit (β)', color_continuous_scale='RdYlGn', text_auto='.2f')
     st.plotly_chart(fig, use_container_width=True)
 
+# ==============================================================================
+# SECURING LATEX STRING WITH RAW STRING PREFIX 'r'
+# ==============================================================================
 st.markdown("---")
 st.markdown("### 🔬 Rigueur Mathématique du Jumeau Numérique (Pour Validation RCP)")
-st.info(f"""
+st.info(r"""
 **Formulation de l'Algorithme :** Contrairement aux modèles linéaires approximatifs, ce Jumeau Numérique utilise l'équation logistique standardisée de la recherche clinique : 
-$$p = \\frac{1}{1 + e^{-(\\beta_0 + \\sum \\beta_i X_i)}}$$
-Où $\\beta_0$ représente le logit d'efficacité pure extrait des publications de phase III de référence (ex: $\\beta_0 = {logit_base:.2f}$ pour {traitement_choisi}). Les ajustements apportés par l'oncologue modifient de façon exponentielle les odds de réponse. Cette approche mathématique empêche toute aberration statistique et garantit une parfaite concordance avec les modèles prédictifs multivariés de la littérature médicale internationale.
+
+$$p = \frac{1}{1 + e^{-(\beta_0 + \sum \beta_i X_i)}}$$
+
+Où $\beta_0$ représente le logit d'efficacité pure extrait des publications de phase III de référence. Les ajustements apportés par l'oncologue modifient de façon exponentielle les odds de réponse. Cette approche mathématique empêche toute aberration statistique et garantit une parfaite concordance avec les modèles prédictifs de la littérature médicale internationale.
 """)
