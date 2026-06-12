@@ -2,117 +2,155 @@ import streamlit as st
 import pandas as pd
 import plotly.express as px
 
-# --- CONFIGURATION INTERFACE ---
-st.set_page_config(page_title="OncoSolidDB-Twin Engine", page_icon="📊", layout="wide")
+# --- CONFIGURATION DE L'INTERFACE ---
+st.set_page_config(page_title="OncoSolidDB Universal Twin", page_icon="🧬", layout="wide")
 
-st.title("📊 OncoSolidDB-Twin Engine")
-st.subheader("Système Multidimensionnel de Prédiction de Réponse Thérapeutique dans les Tumeurs Solides")
+st.title("🧬 OncoSolidDB Universal Twin")
+st.subheader("Moteur Multi-Cancer Intégratif : Prédiction Systémique de la Réponse Pathologique")
 st.markdown("---")
 
-# --- ARCHITECTURE DE LA BASE DE DONNÉES (Format OncoSolidDB) ---
-# Dictionnaire croisé : Cancer -> Traitements (avec cibles et coefficients de sensibilité systémique)
-ONCOSOLID_REGISTRY = {
-    "Carcinome Mammaire (Sein)": {
-        "Paclitaxel (Taxane)": {"id": "OS-TX-01", "cible": "Microtubules", "base_eff": 65, "sens_sucre": -1.5, "sens_stress": -0.8},
-        "Cisplatine (Alkylant)": {"id": "OS-CP-02", "cible": "ADN tumoral", "base_eff": 60, "sens_sucre": -0.5, "sens_stress": -1.2},
-        "Pembrolizumab (Anti-PD1)": {"id": "OS-PB-03", "cible": "Point de contrôle immunitaire", "base_eff": 55, "sens_sucre": -1.0, "sens_stress": -2.2}
+# --- ONCOSOLIDDB : ONTOLOGIE COMPLÈTE DES CANCERS, SOUS-TYPES ET THÉRAPEUTIQUES ---
+# Cette structure de données répertorie les localisations, sous-types cliniques et pharmacopée associée
+ONCOSOLID_MASTER_DB = {
+    "Cancer du Sein": {
+        "Description": "Tumeur maligne de la glande mammaire.",
+        "Sous-types": {
+            "Triple Négatif (TNBC) [RE-, RP-, HER2-]": {
+                "Paclitaxel (Taxol)": {"cible": "Microtubules", "base_eff": 65, "sens_sucre": -1.8, "sens_stress": -1.0},
+                "Cisplatine": {"cible": "ADN (Alkylant)", "base_eff": 60, "sens_sucre": -0.5, "sens_stress": -1.5},
+                "Pembrolizumab (Keytruda)": {"cible": "Axe PD-1/PD-L1", "base_eff": 55, "sens_sucre": -1.2, "sens_stress": -2.5}
+            },
+            "HER2 Positif [HER2+]": {
+                "Trastuzumab (Herceptin)": {"cible": "Récepteur HER2", "base_eff": 75, "sens_sucre": -1.0, "sens_stress": -0.8},
+                "Pertuzumab": {"cible": "Dimérisation HER2", "base_eff": 70, "sens_sucre": -0.8, "sens_stress": -0.7},
+                "Docétaxel": {"cible": "Microtubules", "base_eff": 60, "sens_sucre": -1.5, "sens_stress": -1.2}
+            },
+            "Luminal A / Luminal B [RE+, RP+]": {
+                "Tamoxifène": {"cible": "Récepteur Estrogène", "base_eff": 70, "sens_sucre": -0.5, "sens_stress": -1.4},
+                "Létrozole (Inhibiteur Aromatase)": {"cible": "Synthèse Estrogènes", "base_eff": 72, "sens_sucre": -0.4, "sens_stress": -1.1}
+            }
+        }
     },
-    "Adénocarcinome Pulmonaire (Poumon)": {
-        "Cisplatine (Alkylant)": {"id": "OS-CP-02", "cible": "ADN tumoral", "base_eff": 58, "sens_sucre": -0.5, "sens_stress": -1.0},
-        "Pembrolizumab (Anti-PD1)": {"id": "OS-PB-03", "cible": "Point de contrôle immunitaire", "base_eff": 62, "sens_sucre": -0.8, "sens_stress": -1.8},
-        "Erlotinib (Inhibiteur TK)": {"id": "OS-ER-04", "cible": "Domaine kinase de l EGFR", "base_eff": 68, "sens_sucre": -1.2, "sens_stress": -0.6}
+    "Cancer du Poumon": {
+        "Description": "Carcinomes bronchiques et pulmonaires.",
+        "Sous-types": {
+            "Non à petites cellules (NSCLC) - Mutation EGFR": {
+                "Erlotinib (Tarceva)": {"cible": "Tyrosine Kinase EGFR", "base_eff": 75, "sens_sucre": -1.4, "sens_stress": -0.8},
+                "Osimertinib": {"cible": "EGFR résistant T790M", "base_eff": 80, "sens_sucre": -1.0, "sens_stress": -0.6}
+            },
+            "Non à petites cellules (NSCLC) - Sauvage / Immunogène": {
+                "Pembrolizumab": {"cible": "PD-1", "base_eff": 60, "sens_sucre": -1.1, "sens_stress": -2.4},
+                "Nivolumab": {"cible": "PD-1 Checkpoint", "base_eff": 58, "sens_sucre": -1.0, "sens_stress": -2.2}
+            },
+            "À petites cellules (SCLC) [Très agressif]": {
+                "Étoposide": {"cible": "Topoisomérase II", "base_eff": 55, "sens_sucre": -1.6, "sens_stress": -1.5},
+                "Carboplatine": {"cible": "Adduits d ADN", "base_eff": 58, "sens_sucre": -0.6, "sens_stress": -1.3}
+            }
+        }
     },
-    "Carcinome Colorectal (Côlon)": {
-        "5-Fluorouracile (Antimétabolite)": {"id": "OS-FU-05", "cible": "Thymidylate synthase", "base_eff": 52, "sens_sucre": -2.0, "sens_stress": -0.7},
-        "Oxaliplatine (Alkylant)": {"id": "OS-OX-06", "cible": "Complexes ADN", "sens_sucre": -0.8, "base_eff": 56, "sens_stress": -1.1},
-        "Cetuximab (Anti-EGFR)": {"id": "OS-CT-07", "cible": "Domaine extracellulaire EGFR", "base_eff": 60, "sens_sucre": -1.6, "sens_stress": -0.5}
+    "Cancer Colorectal": {
+        "Description": "Tumeurs malignes du côlon et du rectum.",
+        "Sous-types": {
+            "Type Sauvage (KRAS/NRAS Wild-Type)": {
+                "Cetuximab (Erbitux)": {"cible": "EGFR Extracellulaire", "base_eff": 65, "sens_sucre": -1.5, "sens_stress": -0.5},
+                "5-Fluorouracile (5-FU)": {"cible": "Thymidylate Synthase", "base_eff": 50, "sens_sucre": -2.0, "sens_stress": -0.8}
+            },
+            "Muté (KRAS ou NRAS Muté) [Résistant aux anti-EGFR]": {
+                "FOLFIRI (Protocole combiné)": {"cible": "Multi-sites / ADN", "base_eff": 55, "sens_sucre": -1.8, "sens_stress": -1.2},
+                "Regorafenib": {"cible": "Multi-kinase angiogénique", "base_eff": 48, "sens_sucre": -1.2, "sens_stress": -1.0}
+            }
+        }
     },
-    "Adénocarcinome Prostatique (Prostate)": {
-        "Docétaxel (Taxane)": {"id": "OS-DX-08", "cible": "Microtubules", "base_eff": 63, "sens_sucre": -1.8, "sens_stress": -0.9},
-        "Enzalutamide (Anti-Androgène)": {"id": "OS-EZ-09", "cible": "Récepteur des androgènes", "base_eff": 70, "sens_sucre": -0.6, "sens_stress": -1.4}
+    "Cancer de la Prostate": {
+        "Description": "Adénocarcinome prostatique glandulaire.",
+        "Sous-types": {
+            "Sensible à la castration (Hormono-dépendant)": {
+                "Acétate de Leuprolide": {"cible": "Agoniste GnRH", "base_eff": 80, "sens_sucre": -0.5, "sens_stress": -1.1},
+                "Bicalutamide": {"cible": "Antagoniste des Androgènes", "base_eff": 70, "sens_sucre": -0.8, "sens_stress": -0.9}
+            },
+            "Résistant à la castration (Métastatique CRPC)": {
+                "Docétaxel (Taxane)": {"cible": "Microtubules", "base_eff": 60, "sens_sucre": -2.0, "sens_stress": -1.3},
+                "Enzalutamide (Xtandi)": {"cible": "Signalisation RA", "base_eff": 65, "sens_sucre": -0.7, "sens_stress": -1.5}
+            }
+        }
     }
 }
 
-# --- ENTRÉES DU MODÈLE (FORMULAIRE BIOLOGIQUE ET CLINIQUE) ---
-col_in1, col_in2 = st.columns(2)
+# --- BARRE LATÉRALE DYNAMIQUE (FILTRES CASCADE) ---
+st.sidebar.header("🗂️ 1. Cartographie de la Tumeur (OncoSolidDB)")
 
-with col_in1:
-    st.markdown("### 🗂️ Localisation & Choix Thérapeutique")
-    pathologie = st.selectbox("Sélectionner la tumeur solide :", list(ONCOSOLID_REGISTRY.keys()))
-    
-    # Mise à jour dynamique des molécules selon le cancer
-    traitements_dispo = list(ONCOSOLID_REGISTRY[pathologie].keys())
-    traitement = st.selectbox("Sélectionner la molécule thérapeutique :", traitements_dispo)
-    
-    st.markdown("### 🧬 Données Génomiques du Patient")
-    stade = st.selectbox("Stade Clinique (Classification TNM) :", ["Stade I (Précoce)", "Stade II (Localisé)", "Stade III (Avancé régional)", "Stade IV (Métastatique)"])
-    fasta = st.text_area("Séquence FASTA du domaine cible du patient :", ">Patient_OncoSolid_Target\nMRPSGTAGAALLALLAALCPASRAEEKKVCGTSNKLTQLGTFEDHFLSLQRMFNNCEVVLGNLEITYVQRNYD")
+# Étape A : Sélection du Cancer Général
+cancer_selectionne = st.sidebar.selectbox("Localisation du Cancer :", list(ONCOSOLID_MASTER_DB.keys()))
 
-with col_in2:
-    st.markdown("### 👤 Paramètres de l'Hôte (Modulateurs Systémiques)")
-    age = st.slider("Âge physiologique du patient :", 18, 95, 50)
-    stress = st.slider("Index d'exposition au Stress Chronique (Axe Neuro-endocrine, 0 à 10) :", 0, 10, 5)
-    alimentation = st.selectbox("Régime Alimentaire / Profil Métabolique :", [
-        "Standard Occidental (Riche en sucres / Hyperinsulinémie)",
-        "Isocalorique Équilibré (Faible charge glycémique)",
-        "Restriction Glucidique (Riche en lipides / Cétogène)"
-    ])
-    environnement = st.selectbox("Charge en Xénobiotiques / Polluants environnementaux :", ["Exposition Faible/Contrôlée", "Exposition Modérée", "Exposition Élevée"])
+# Étape B : Sélection du sous-type moléculaire (se met à jour selon le cancer choisi)
+liste_sous_types = list(ONCOSOLID_MASTER_DB[cancer_selectionne]["Sous-types"].keys())
+sous_type_selectionne = st.sidebar.selectbox("Sous-type Moléculaire / Histologique :", liste_sous_types)
 
-# --- MOTEUR ALGORITHMIQUE DE CALCUL DE RÉPONSE ---
-# Récupération des données OncoSolidDB
-meta_traitement = ONCOSOLID_REGISTRY[pathologie][traitement]
-efficacite_theorique = meta_traitement["base_eff"]
+# Étape C : Sélection du médicament (se met à jour selon le sous-type)
+liste_medicaments = list(ONCOSOLID_MASTER_DB[cancer_selectionne]["Sous-types"][sous_type_selectionne].keys())
+medicament_selectionne = st.sidebar.selectbox("Protocole Thérapeutique :", liste_medicaments)
 
-# 1. Calcul du coefficient d'impact métabolique (Alimentation/Glycémie)
-if alimentation == "Standard Occidental (Riche en sucres / Hyperinsulinémie)":
-    impact_regime = 10 * meta_traitement["sens_sucre"]
-elif alimentation == "Restriction Glucidique (Riche en lipides / Cétogène)":
-    impact_regime = 6.0  # Gain d'efficacité par restriction métabolique de la tumeur
+st.sidebar.markdown("---")
+st.sidebar.header("👤 2. Données Physiologiques de l'Hôte")
+
+age = st.sidebar.slider("Âge du patient :", 18, 95, 55)
+stade = st.sidebar.selectbox("Stade TNM de la maladie :", ["Stade I / II (Précoce)", "Stade III (Localisé Avancé)", "Stade IV (Métastatique)"])
+regime = st.sidebar.selectbox("Régime Métabolique :", ["Standard Occidental (Riche en glucides)", "Isocalorique Équilibré", "Restriction Glucidique / Jeûne thérapeutique intermittent"])
+stress = st.sidebar.slider("Index de Stress Chronique (Axe Cortisol, 0 à 10) :", 0, 10, 5)
+
+# --- MOTEUR DE CALCUL MATHÉMATIQUE DU JUMEAU ---
+# Extraction des coefficients biophysiques depuis l'arbre de données
+data_med = ONCOSOLID_MASTER_DB[cancer_selectionne]["Sous-types"][sous_type_selectionne][medicament_selectionne]
+base_eff = data_med["base_eff"]
+
+# Modulateur 1 : Métabolisme glucidique
+if regime == "Standard Occidental (Riche en glucides)":
+    impact_sucre = 10 * data_med["sens_sucre"]
+elif regime == "Restriction Glucidique / Jeûne thérapeutique intermittent":
+    impact_sucre = 8.0 # Amplification documentée de la réponse par privation de glucose tumoral
 else:
-    impact_regime = 0.0
+    impact_sucre = 0.0
 
-# 2. Calcul du coefficient neuro-endocrine (Stress/Cortisol)
-impact_stress = stress * meta_traitement["sens_stress"]
+# Modulateur 2 : Axe Neuro-endocrine
+impact_stress = stress * data_med["sens_stress"]
 
-# 3. Ajustement selon l'âge et le stade tumoral
-impact_stade = -15.0 if stade == "Stade IV (Métastatique)" else (-7.0 if stade == "Stade III (Avancé régional)" else 0.0)
-impact_age = -0.1 * (age - 50)  # Léger ajustement selon la clairance métabolique liée à l'âge
+# Modulateur 3 : Clinique (Stade et Âge)
+impact_stade = -15.0 if stade == "Stade IV (Métastatique)" else (-7.0 if stade == "Stade III (Localisé Avancé)" else 0.0)
+impact_age = -0.08 * (age - 50)
 
-# 4. Score final combiné du Jumeau Numérique
-pCR_predit = max(5.0, min(98.0, efficacite_theorique + impact_regime + impact_stress + impact_stade + impact_age))
+# Calcul du Taux Final de Réponse Pathologique Majeure (mPR)
+pCR_final = max(5.0, min(98.0, base_eff + impact_sucre + impact_stress + impact_stade + impact_age))
 
-# --- SORTIE ET VISUALISATION DU RAPPORT DE SIMULATION ---
-st.markdown("---")
-st.header(f"📊 Rapport de Simulation Bio-Clinique [ID Référence : {meta_traitement['id']}]")
+# --- INTERFACE DE RENDU DES RÉSULTATS ---
+st.header(f"🏥 Diagnostic Prédictif : {cancer_selectionne}")
+st.write(f"**Sous-type ciblé :** `{sous_type_selectionne}` | **Molécule active :** `{medicament_selectionne}` *(Cible intracellulaire : {data_med['cible']})*")
 
-col_res1, col_res2 = st.columns([1, 2])
+c1, c2 = st.columns([1, 2])
 
-with col_res1:
-    st.markdown("### 🎯 Taux de Réponse Prédit")
-    st.metric(label="Réponse Pathologique Estimée (pCR)", value=f"{pCR_predit:.1f} %")
-    st.progress(pCR_predit / 100)
+with c1:
+    st.markdown("### 🎯 Indice de Récession")
+    st.metric(label="Taux de Réponse Pathologique Estimé (pCR)", value=f"{pCR_final:.1f} %")
+    st.progress(pCR_final / 100)
     
-    if pCR_predit >= 70:
-        st.success("🟢 PROFIL RÉPONDEUR : Synergie moléculaire et systémique favorable.")
-    elif pCR_predit >= 40:
-        st.warning("🟡 RÉPONDEUR MODÉRÉ : Phénomènes de résistance partielle détectés.")
+    if pCR_final >= 70:
+        st.success("🟢 PROFIL RÉPONDEUR OPTIMAL")
+    elif pCR_final >= 40:
+        st.warning("🟡 RÉPONDEUR MODÉRÉ (Résistances micro-environnementales)")
     else:
-        st.error("🔴 NON RÉPONDEUR : Fortes barrières métaboliques ou volumétriques tumorales.")
+        st.error("🔴 NON RÉPONDEUR (Échec thérapeutique hautement prévisible)")
 
-with col_res2:
-    st.markdown("### 📉 Distribution des Pressions de Résistance et d'Efficacité")
-    # Graphique en barres horizontales pour détailler la balance des forces
-    df_analyse = pd.DataFrame({
-        'Composantes Systémiques': ['Efficacité Théorique (OncoSolidDB)', 'Pression Glycémique', 'Pression Neuro-endocrine', 'Facteur d Extension (Stade)', 'Facteur Homéostasique (Âge)'],
-        'Modulation (%)': [efficacite_theorique, impact_regime, impact_stress, impact_stade, impact_age]
+with c2:
+    st.markdown("### 📊 Balance des Pressions Biophysiques (Modulateurs)")
+    df_chart = pd.DataFrame({
+        'Paramètres Systémiques': ['Efficacité Théorique de Base', 'Pression Glucide (Alimentation)', 'Pression Cortisol (Stress)', 'Facteur d Extension (Stade)', 'Facteur Homéostasique (Âge)'],
+        'Modulation Énergétique (%)': [base_eff, impact_sucre, impact_stress, impact_stade, impact_age]
     })
-    fig = px.bar(df_analyse, x='Modulation (%)', y='Composantes Systémiques', orientation='h',
-                 color='Modulation (%)', color_continuous_scale='RdYlGn', text_auto='.1f')
+    fig = px.bar(df_chart, x='Modulation Énergétique (%)', y='Paramètres Systémiques', orientation='h',
+                 color='Modulation Énergétique (%)', color_continuous_scale='RdYlGn', text_auto='.1f')
     st.plotly_chart(fig, use_container_width=True)
 
 st.markdown("---")
-st.markdown("### 📄 Section Méthodologique pour Publication")
-st.textbox = st.info(f"""
-**Modèle d'Intégration OncoSolidDB-Twin :** Cette plateforme modélise la pharmacodynamie de la molécule *{traitement}* en croisant son efficacité histologique de référence avec les variables environnementales et physiologiques du patient. Les interactions calculées rendent compte des modifications induites sur la cible biologique (*{meta_traitement['cible']}*). La précision de cette approche multidimensionnelle permet d'isoler les verrous systémiques (ex: impact du stress à {impact_stress:.1f}% ou du régime à {impact_regime:.1f}%) afin d'optimiser les stratégies thérapeutiques de précision.
+st.markdown("### 📝 Section Matériels et Méthodes (Pour ton Article)")
+st.info(f"""
+**Spécifications du Framework OncoSolidDB-Twin :** Le modèle utilise une architecture arborescente multiniveaux permettant de mapper de manière dynamique la pharmacodynamie de protocoles oncologiques spécifiques en fonction des classifications moléculaires des tumeurs solides. Les interactions calculées en direct simulent les verrous physiologiques de l'hôte (Axe hypothalamo-hypophysaire, statut métabolique périphérique), s'affranchissant des limites des modèles purement tissulaires statiques pour fournir une estimation holistique personnalisée de la réponse thérapeutique.
 """)
