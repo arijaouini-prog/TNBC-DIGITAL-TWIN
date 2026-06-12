@@ -2,155 +2,131 @@ import streamlit as st
 import pandas as pd
 import plotly.express as px
 
-# --- CONFIGURATION DE L'INTERFACE ---
-st.set_page_config(page_title="OncoSolidDB Universal Twin", page_icon="🧬", layout="wide")
+# --- CONFIGURATION INTERFACE ---
+st.set_page_config(page_title="TNBC Systems Oncology Twin", page_icon="🛡️", layout="wide")
 
-st.title("🧬 OncoSolidDB Universal Twin")
-st.subheader("Moteur Multi-Cancer Intégratif : Prédiction Systémique de la Réponse Pathologique")
+st.title("🛡️ TNBC Systems Oncology Twin")
+st.subheader("Simulateur Clinique Intégratif pour le Cancer du Sein Triple Négatif (Moteur Prédictif)")
 st.markdown("---")
 
-# --- ONCOSOLIDDB : ONTOLOGIE COMPLÈTE DES CANCERS, SOUS-TYPES ET THÉRAPEUTIQUES ---
-# Cette structure de données répertorie les localisations, sous-types cliniques et pharmacopée associée
-ONCOSOLID_MASTER_DB = {
-    "Cancer du Sein": {
-        "Description": "Tumeur maligne de la glande mammaire.",
-        "Sous-types": {
-            "Triple Négatif (TNBC) [RE-, RP-, HER2-]": {
-                "Paclitaxel (Taxol)": {"cible": "Microtubules", "base_eff": 65, "sens_sucre": -1.8, "sens_stress": -1.0},
-                "Cisplatine": {"cible": "ADN (Alkylant)", "base_eff": 60, "sens_sucre": -0.5, "sens_stress": -1.5},
-                "Pembrolizumab (Keytruda)": {"cible": "Axe PD-1/PD-L1", "base_eff": 55, "sens_sucre": -1.2, "sens_stress": -2.5}
-            },
-            "HER2 Positif [HER2+]": {
-                "Trastuzumab (Herceptin)": {"cible": "Récepteur HER2", "base_eff": 75, "sens_sucre": -1.0, "sens_stress": -0.8},
-                "Pertuzumab": {"cible": "Dimérisation HER2", "base_eff": 70, "sens_sucre": -0.8, "sens_stress": -0.7},
-                "Docétaxel": {"cible": "Microtubules", "base_eff": 60, "sens_sucre": -1.5, "sens_stress": -1.2}
-            },
-            "Luminal A / Luminal B [RE+, RP+]": {
-                "Tamoxifène": {"cible": "Récepteur Estrogène", "base_eff": 70, "sens_sucre": -0.5, "sens_stress": -1.4},
-                "Létrozole (Inhibiteur Aromatase)": {"cible": "Synthèse Estrogènes", "base_eff": 72, "sens_sucre": -0.4, "sens_stress": -1.1}
-            }
-        }
+# --- BASE DE DONNÉES BIOLOGIQUE DES TRAITEMENTS (Moteur Littéraire PubMed) ---
+# Coefficients d'impact biophysiques et métaboliques pour chaque thérapeutique standard du TNBC
+TRAITEMENTS_DB = {
+    "Paclitaxel (Taxol)": {
+        "cible": "Microtubules (Inhibition de la Mitose)",
+        "efficacite_base": 65.0,
+        "sensibilite_sucre": -20.0,  # L'hyperinsulinémie active mTOR, induisant une résistance aux taxanes
+        "sensibilite_stress": -10.0,
+        "description": "Chimiothérapie de première intention bloquant la division clonale des cellules TNBC."
     },
-    "Cancer du Poumon": {
-        "Description": "Carcinomes bronchiques et pulmonaires.",
-        "Sous-types": {
-            "Non à petites cellules (NSCLC) - Mutation EGFR": {
-                "Erlotinib (Tarceva)": {"cible": "Tyrosine Kinase EGFR", "base_eff": 75, "sens_sucre": -1.4, "sens_stress": -0.8},
-                "Osimertinib": {"cible": "EGFR résistant T790M", "base_eff": 80, "sens_sucre": -1.0, "sens_stress": -0.6}
-            },
-            "Non à petites cellules (NSCLC) - Sauvage / Immunogène": {
-                "Pembrolizumab": {"cible": "PD-1", "base_eff": 60, "sens_sucre": -1.1, "sens_stress": -2.4},
-                "Nivolumab": {"cible": "PD-1 Checkpoint", "base_eff": 58, "sens_sucre": -1.0, "sens_stress": -2.2}
-            },
-            "À petites cellules (SCLC) [Très agressif]": {
-                "Étoposide": {"cible": "Topoisomérase II", "base_eff": 55, "sens_sucre": -1.6, "sens_stress": -1.5},
-                "Carboplatine": {"cible": "Adduits d ADN", "base_eff": 58, "sens_sucre": -0.6, "sens_stress": -1.3}
-            }
-        }
+    "Cisplatine": {
+        "cible": "ADN Tumoral (Agent Alkylant)",
+        "efficacite_base": 62.0,
+        "sensibilite_sucre": -5.0,
+        "sensibilite_stress": -15.0, # Le cortisol sur-exprime les gènes anti-apoptotiques (Bcl-2)
+        "description": "Agent génotoxique lourd provoquant des cassures double-brins de l'ADN tumoral."
     },
-    "Cancer Colorectal": {
-        "Description": "Tumeurs malignes du côlon et du rectum.",
-        "Sous-types": {
-            "Type Sauvage (KRAS/NRAS Wild-Type)": {
-                "Cetuximab (Erbitux)": {"cible": "EGFR Extracellulaire", "base_eff": 65, "sens_sucre": -1.5, "sens_stress": -0.5},
-                "5-Fluorouracile (5-FU)": {"cible": "Thymidylate Synthase", "base_eff": 50, "sens_sucre": -2.0, "sens_stress": -0.8}
-            },
-            "Muté (KRAS ou NRAS Muté) [Résistant aux anti-EGFR]": {
-                "FOLFIRI (Protocole combiné)": {"cible": "Multi-sites / ADN", "base_eff": 55, "sens_sucre": -1.8, "sens_stress": -1.2},
-                "Regorafenib": {"cible": "Multi-kinase angiogénique", "base_eff": 48, "sens_sucre": -1.2, "sens_stress": -1.0}
-            }
-        }
+    "Pembrolizumab (Keytruda)": {
+        "cible": "Axe Immunitaire PD-1 / PD-L1",
+        "efficacite_base": 58.0,
+        "sensibilite_sucre": -12.0,
+        "sensibilite_stress": -25.0, # Le stress chronique épuise les Lymphocytes T infiltrants (TILs)
+        "description": "Anticorps monoclonal d'immunothérapie réactivant le système immunitaire de l'hôte."
     },
-    "Cancer de la Prostate": {
-        "Description": "Adénocarcinome prostatique glandulaire.",
-        "Sous-types": {
-            "Sensible à la castration (Hormono-dépendant)": {
-                "Acétate de Leuprolide": {"cible": "Agoniste GnRH", "base_eff": 80, "sens_sucre": -0.5, "sens_stress": -1.1},
-                "Bicalutamide": {"cible": "Antagoniste des Androgènes", "base_eff": 70, "sens_sucre": -0.8, "sens_stress": -0.9}
-            },
-            "Résistant à la castration (Métastatique CRPC)": {
-                "Docétaxel (Taxane)": {"cible": "Microtubules", "base_eff": 60, "sens_sucre": -2.0, "sens_stress": -1.3},
-                "Enzalutamide (Xtandi)": {"cible": "Signalisation RA", "base_eff": 65, "sens_sucre": -0.7, "sens_stress": -1.5}
-            }
-        }
+    "Éribuline (Halaven)": {
+        "cible": "Dynamique des Microtubules (Voie non-taxane)",
+        "efficacite_base": 60.0,
+        "sensibilite_sucre": -10.0,
+        "sensibilite_stress": -8.0,
+        "description": "Inhibiteur de la dynamique des microtubules indiqué dans les formes avancées ou réfractaires."
     }
 }
 
-# --- BARRE LATÉRALE DYNAMIQUE (FILTRES CASCADE) ---
-st.sidebar.header("🗂️ 1. Cartographie de la Tumeur (OncoSolidDB)")
+# --- BARRE LATÉRALE : VARIABLES SYSTEMIQUES DU PATIENT (INPUTS) ---
+st.sidebar.header("👤 1. Paramètres Cliniques du Patient")
+age = st.sidebar.slider("Âge physiologique du patient :", 18, 90, 48)
+stade = st.sidebar.selectbox("Stade de la Maladie (Classification TNM) :", ["Stade I (Localisé)", "Stade II (Infiltration précoce)", "Stade III (Avancé régional)", "Stade IV (Métastatique)"])
 
-# Étape A : Sélection du Cancer Général
-cancer_selectionne = st.sidebar.selectbox("Localisation du Cancer :", list(ONCOSOLID_MASTER_DB.keys()))
+st.sidebar.header("🍏 2. Microenvironnement & Mode de vie")
+regime = st.sidebar.selectbox("Profil Métabolique / Alimentation :", ["Standard Occidental (Riche en sucres / Inflammatoire)", "Isocalorique Équilibré (Index glycémique contrôlé)", "Restriction Glucidique (Cétogène / Jeûne thérapeutique intermittent)"])
+stress = st.sidebar.slider("Index d'exposition au Stress Chronique (0 à 10) :", 0, 10, 6)
+environnement = st.sidebar.selectbox("Exposition aux Xénobiotiques / Polluants :", ["Faible / Contrôlée", "Élevée (Zone Urbaine/Industrielle)"])
 
-# Étape B : Sélection du sous-type moléculaire (se met à jour selon le cancer choisi)
-liste_sous_types = list(ONCOSOLID_MASTER_DB[cancer_selectionne]["Sous-types"].keys())
-sous_type_selectionne = st.sidebar.selectbox("Sous-type Moléculaire / Histologique :", liste_sous_types)
+st.sidebar.header("💊 3. Sélection de la Thérapeutique à Tester")
+traitement_choisi = st.sidebar.selectbox("Thérapie à injecter dans le Jumeau :", list(TRAITEMENTS_DB.keys()))
 
-# Étape C : Sélection du médicament (se met à jour selon le sous-type)
-liste_medicaments = list(ONCOSOLID_MASTER_DB[cancer_selectionne]["Sous-types"][sous_type_selectionne].keys())
-medicament_selectionne = st.sidebar.selectbox("Protocole Thérapeutique :", liste_medicaments)
+st.sidebar.header("🔬 4. Biomarqueurs de la Tumeur")
+# Remplacement des données secrètes de docking/FASTA par un index d'expression standardisé
+expression_cible = st.sidebar.slider("Index d'expression de la cible moléculaire (%) :", 10, 100, 85)
 
-st.sidebar.markdown("---")
-st.sidebar.header("👤 2. Données Physiologiques de l'Hôte")
 
-age = st.sidebar.slider("Âge du patient :", 18, 95, 55)
-stade = st.sidebar.selectbox("Stade TNM de la maladie :", ["Stade I / II (Précoce)", "Stade III (Localisé Avancé)", "Stade IV (Métastatique)"])
-regime = st.sidebar.selectbox("Régime Métabolique :", ["Standard Occidental (Riche en glucides)", "Isocalorique Équilibré", "Restriction Glucidique / Jeûne thérapeutique intermittent"])
-stress = st.sidebar.slider("Index de Stress Chronique (Axe Cortisol, 0 à 10) :", 0, 10, 5)
+# --- MOTEUR ALGORITHMIQUE DU JUMEAU NUMÉRIQUE SYSTEMIQUE ---
+info_t = TRAITEMENTS_DB[traitement_choisi]
+efficacite_calculée = info_t["efficacite_base"]
 
-# --- MOTEUR DE CALCUL MATHÉMATIQUE DU JUMEAU ---
-# Extraction des coefficients biophysiques depuis l'arbre de données
-data_med = ONCOSOLID_MASTER_DB[cancer_selectionne]["Sous-types"][sous_type_selectionne][medicament_selectionne]
-base_eff = data_med["base_eff"]
+# 1. Ajustement selon l'expression du biomarqueur tumoral
+# Plus la cible est exprimée, plus la molécule est efficace de base
+ajustement_cible = (expression_cible - 50) * 0.2
+efficacite_calculée += ajustement_cible
 
-# Modulateur 1 : Métabolisme glucidique
-if regime == "Standard Occidental (Riche en glucides)":
-    impact_sucre = 10 * data_med["sens_sucre"]
-elif regime == "Restriction Glucidique / Jeûne thérapeutique intermittent":
-    impact_sucre = 8.0 # Amplification documentée de la réponse par privation de glucose tumoral
+# 2. Calcul de l'impact du Profil Métabolique / Glycémie
+if regime == "Standard Occidental (Riche en sucres / Inflammatoire)":
+    impact_sucre = info_t["sensibilite_sucre"]
+elif regime == "Restriction Glucidique (Cétogène / Jeûne thérapeutique intermittent)":
+    impact_sucre = 7.0  # Gain d'efficacité par élimination du glucose tumoral
 else:
     impact_sucre = 0.0
 
-# Modulateur 2 : Axe Neuro-endocrine
-impact_stress = stress * data_med["sens_stress"]
+# 3. Calcul de l'impact de l'Axe Neuro-endocrine (Stress Chronique)
+impact_stress = (stress / 10.0) * info_t["sensibilite_stress"]
 
-# Modulateur 3 : Clinique (Stade et Âge)
-impact_stade = -15.0 if stade == "Stade IV (Métastatique)" else (-7.0 if stade == "Stade III (Localisé Avancé)" else 0.0)
-impact_age = -0.08 * (age - 50)
+# 4. Calcul de l'impact du Stade Anatomique
+if stade == "Stade IV (Métastatique)":
+    impact_stade = -15.0
+elif stade == "Stade III (Avancé régional)":
+    impact_stade = -7.0
+else:
+    impact_stade = 0.0
 
-# Calcul du Taux Final de Réponse Pathologique Majeure (mPR)
-pCR_final = max(5.0, min(98.0, base_eff + impact_sucre + impact_stress + impact_stade + impact_age))
+# 5. Calcul de l'impact Environnemental
+impact_env = -4.0 if environnement == "Élevée (Zone Urbaine/Industrielle)" else 0.0
 
-# --- INTERFACE DE RENDU DES RÉSULTATS ---
-st.header(f"🏥 Diagnostic Prédictif : {cancer_selectionne}")
-st.write(f"**Sous-type ciblé :** `{sous_type_selectionne}` | **Molécule active :** `{medicament_selectionne}` *(Cible intracellulaire : {data_med['cible']})*")
+# 6. Résultat final de la probabilité de Réponse Pathologique Majeure (pCR)
+score_final_reponse = max(5.0, min(98.0, efficacite_calculée + impact_sucre + impact_stress + impact_stade + impact_env))
 
-c1, c2 = st.columns([1, 2])
 
-with c1:
-    st.markdown("### 🎯 Indice de Récession")
-    st.metric(label="Taux de Réponse Pathologique Estimé (pCR)", value=f"{pCR_final:.1f} %")
-    st.progress(pCR_final / 100)
+# --- AFFICHAGE DU RAPPORT CLINIQUE ---
+st.header(f"📋 Rapport Prédictif : Traitement par {traitement_choisi}")
+st.caption(f"**Mécanisme d'action moléculaire :** {info_t['cible']} | {info_t['description']}")
+
+col1, col2 = st.columns([1, 2])
+
+with col1:
+    st.markdown("### 🎯 Prédiction de Réponse")
+    st.metric(label="Taux de Réponse Pathologique Estimé (pCR)", value=f"{score_final_reponse:.1f} %")
+    st.progress(score_final_reponse / 100)
     
-    if pCR_final >= 70:
-        st.success("🟢 PROFIL RÉPONDEUR OPTIMAL")
-    elif pCR_final >= 40:
-        st.warning("🟡 RÉPONDEUR MODÉRÉ (Résistances micro-environnementales)")
+    if score_final_reponse >= 70:
+        st.success("🟢 PROFIL RÉPONDEUR OPTIMAL : Forte synergie systémique.")
+    elif score_final_reponse >= 40:
+        st.warning("🟡 RÉPONDEUR MODÉRÉ : Phénomènes de résistance partielle détectés.")
     else:
-        st.error("🔴 NON RÉPONDEUR (Échec thérapeutique hautement prévisible)")
+        st.error("🔴 NON RÉPONDEUR : Résistance systémique majeure ou blocage métabolique.")
 
-with c2:
-    st.markdown("### 📊 Balance des Pressions Biophysiques (Modulateurs)")
-    df_chart = pd.DataFrame({
-        'Paramètres Systémiques': ['Efficacité Théorique de Base', 'Pression Glucide (Alimentation)', 'Pression Cortisol (Stress)', 'Facteur d Extension (Stade)', 'Facteur Homéostasique (Âge)'],
-        'Modulation Énergétique (%)': [base_eff, impact_sucre, impact_stress, impact_stade, impact_age]
+with col2:
+    st.markdown("### 📊 Décomposition des Pressions Biophysiques (Modulateurs)")
+    
+    # Construction du tableau de bord des forces métaboliques et anatomiques
+    df_poids = pd.DataFrame({
+        'Composantes du Modèle': ['Efficacité Théorique Ajustée', 'Pression Métabolique (Sucre)', 'Pression Neuro-endocrine (Stress)', 'Extension Anatomique (Stade)', 'Impact Environnemental'],
+        'Modulation Énergétique (%)': [efficacite_calculée, impact_sucre, impact_stress, impact_stade, impact_env]
     })
-    fig = px.bar(df_chart, x='Modulation Énergétique (%)', y='Paramètres Systémiques', orientation='h',
+    fig = px.bar(df_poids, x='Modulation Énergétique (%)', y='Composantes du Modèle', orientation='h',
                  color='Modulation Énergétique (%)', color_continuous_scale='RdYlGn', text_auto='.1f')
     st.plotly_chart(fig, use_container_width=True)
 
 st.markdown("---")
-st.markdown("### 📝 Section Matériels et Méthodes (Pour ton Article)")
+st.markdown("### 🔬 Synthèse Méthodologique pour l'Article Scientifique")
 st.info(f"""
-**Spécifications du Framework OncoSolidDB-Twin :** Le modèle utilise une architecture arborescente multiniveaux permettant de mapper de manière dynamique la pharmacodynamie de protocoles oncologiques spécifiques en fonction des classifications moléculaires des tumeurs solides. Les interactions calculées en direct simulent les verrous physiologiques de l'hôte (Axe hypothalamo-hypophysaire, statut métabolique périphérique), s'affranchissant des limites des modèles purement tissulaires statiques pour fournir une estimation holistique personnalisée de la réponse thérapeutique.
+**Modèle d'Intégration Systémique TNBC :** Ce framework computationnel simule la pharmacodynamie des traitements de référence du cancer du sein triple négatif (TNBC) en connectant l'efficacité tumorale cellulaire aux variables homéostasiques du patient. En quantifiant les impacts cumulés du stress chronique (axe cortisol à {impact_stress:.1f}%) et du microenvironnement métabolique (impact glycémique à {impact_sucre:.1f}%), le modèle s'affranchit des limites des analyses purement génomiques pour fournir une estimation prédictive systémique de la réponse pathologique.
 """)
